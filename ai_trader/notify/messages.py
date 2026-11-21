@@ -8,12 +8,16 @@ from typing import Any
 def format_cycle(result: Any) -> str:
     if result.busy:
         return "busy"
+    payload = getattr(result, "order_payload", None)
     lines = [
         f"AI-GOLD {result.trigger} {result.session or '-'}",
         f"price {result.price if result.price is not None else '-'}",
         f"decision {result.final_decision}",
     ]
-    if result.trigger == "telegram_order" and getattr(result, "confidence", None) is not None:
+    levels = _order_levels(payload)
+    if levels:
+        lines.append(levels)
+    if _show_confidence(result, bool(payload)):
         lines.append(f"confidence {_confidence_text(result.confidence)}")
     if result.rejection_reason:
         lines.append(f"rejected {result.rejection_reason}")
@@ -36,23 +40,30 @@ def format_cycle(result: Any) -> str:
 
 def format_chat_notice(result: Any, rows: list[dict[str, Any]]) -> str:
     """One note for a chat. Account lines appear only when the outcomes differ."""
+    sent = any(row.get("order_payload") for row in rows)
     lines = [
         f"AI-GOLD {result.trigger} {result.session or '-'}",
         f"price {result.price if result.price is not None else '-'}",
     ]
-    if result.trigger == "telegram_order" and getattr(result, "confidence", None) is not None:
+    if _show_confidence(result, sent):
         lines.append(f"confidence {_confidence_text(result.confidence)}")
     signatures = [_outcome(row) for row in rows]
     if len(set(signatures)) <= 1:
-        decision, reason, volume = signatures[0] if signatures else (result.final_decision, result.rejection_reason, None)
+        decision, reason, volume, levels = (
+            signatures[0] if signatures else (result.final_decision, result.rejection_reason, None, None)
+        )
         lines.append(f"decision {decision}")
+        if levels:
+            lines.append(levels)
         if reason:
             lines.append(f"rejected {reason}")
         if volume is not None:
             lines.append(f"volume {volume}")
     else:
-        for row, (decision, reason, volume) in zip(rows, signatures):
+        for row, (decision, reason, volume, levels) in zip(rows, signatures):
             bits = [f"account {row.get('account_id')}", f"decision {decision}"]
+            if levels:
+                bits.append(levels)
             if reason:
                 bits.append(f"rejected {reason}")
             if volume is not None:
@@ -63,6 +74,29 @@ def format_chat_notice(result: Any, rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _show_confidence(result: Any, sent: bool) -> bool:
+    """Confidence is on /order replies, and on any cycle that sent an order."""
+    if getattr(result, "confidence", None) is None:
+        return False
+    return sent or result.trigger == "telegram_order"
+
+
+def _order_levels(payload: dict[str, Any] | None) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    parts: list[str] = []
+    side = payload.get("side")
+    if side:
+        parts.append(str(side))
+    if payload.get("entry_price") is not None:
+        parts.append(f"entry {payload['entry_price']}")
+    if payload.get("stop_loss") is not None:
+        parts.append(f"sl {payload['stop_loss']}")
+    if payload.get("take_profit") is not None:
+        parts.append(f"tp {payload['take_profit']}")
+    return " ".join(parts) or None
+
+
 def _confidence_text(value: float) -> str:
     number = float(value)
     if number.is_integer():
@@ -70,11 +104,10 @@ def _confidence_text(value: float) -> str:
     return f"{number:g}"
 
 
-def _outcome(row: dict[str, Any]) -> tuple[Any, Any, Any]:
-    volume = None
-    if row.get("placed"):
-        volume = (row.get("order_payload") or {}).get("volume")
-    return (row.get("final_decision"), row.get("rejection_reason"), volume)
+def _outcome(row: dict[str, Any]) -> tuple[Any, Any, Any, str | None]:
+    payload = row.get("order_payload") if isinstance(row.get("order_payload"), dict) else None
+    volume = payload.get("volume") if payload else None
+    return (row.get("final_decision"), row.get("rejection_reason"), volume, _order_levels(payload))
 
 
 def format_status(

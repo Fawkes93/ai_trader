@@ -25,6 +25,16 @@ New entries are allowed whenever gold is open, including the 03:00 UTC Asia run.
 
 Management in this version is leave, close, and move stop to breakeven. Trail and partial close are parsed and then rejected.
 
+## How a decision is chosen
+
+The path is the shared direction of the monthly and weekly trends. Daily, 4-hour, and 1-hour do not vote. A trend is up when the latest close is above both the average of the last 10 closes and an older close: three weeks back on the weekly chart, two months back on the monthly chart. Both checks have to agree, or the label is flat. The average is the plain mean of those closes. The current week and the current month are included, and their close is the latest 15-minute candle in that bucket.
+
+A sell is allowed when the path is down and price is in the top third between the nearest support and resistance. A buy is allowed when the path is up and price is in the bottom third. Otherwise the setup is none.
+
+The calendar, COT, and X sentiment are context for the write-up, the stop, and the confidence score. They do not change the path or the setup. The calendar shows whether an event supports that path. A news day does not block a trade. X sentiment is the lean of recent posts from `X_HANDLES`. COT is the latest commercial net, managed-money net, and open interest. Confidence below 60 still rejects the order. `/order` skips that floor.
+
+Each cycle is stored in `ai_analysis_runs`, including a pass and a rejected order. The next cycle reads the last 10. That list does not change the path or the setup. The daily summary and the Saturday review read the same table.
+
 ## Setup
 
 ```bash
@@ -87,7 +97,7 @@ Price alerts are checked every 60 seconds while gold is open. A cross starts one
 
 ## Telegram
 
-Pushes: each cycle, orders and modifications, the daily summary, the weekly review.
+Pushes: each cycle, orders and modifications, the daily summary, the weekly review. An order sent to Factor includes the side, entry, stop, target, and confidence.
 
 Commands, only from `TELEGRAM_CHAT_ID`:
 

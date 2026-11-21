@@ -1,5 +1,5 @@
 from ai_trader.cycle import CycleResult, _notify_result
-from ai_trader.notify.messages import format_cycle
+from ai_trader.notify.messages import format_chat_notice, format_cycle
 
 
 def _row(account: int, **overrides) -> dict:
@@ -39,6 +39,35 @@ def test_order_reply_includes_confidence():
     )
     assert "confidence 72" in text
     assert "decision market" in text
+
+
+def test_sent_order_includes_entry_stop_target_and_confidence():
+    payload = {
+        "side": "sell",
+        "entry_price": 4102.5,
+        "stop_loss": 4114,
+        "take_profit": 4088,
+        "volume": 0.02,
+    }
+    result = CycleResult(
+        trigger="schedule",
+        session="london",
+        price=4102.5,
+        final_decision="market",
+        confidence=74,
+        order_payload=payload,
+    )
+    text = format_cycle(result)
+    assert "sell entry 4102.5 sl 4114 tp 4088" in text
+    assert "confidence 74" in text
+
+    note = format_chat_notice(
+        result,
+        [_row(22, final_decision="market", rejection_reason=None, placed=True, order_payload=payload)],
+    )
+    assert "sell entry 4102.5 sl 4114 tp 4088" in note
+    assert "confidence 74" in note
+    assert "volume 0.02" in note
 
 
 def test_scheduled_reply_leaves_confidence_out():
